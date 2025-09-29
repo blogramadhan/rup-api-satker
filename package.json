@@ -1,0 +1,30 @@
+{
+  "name": "rup-api-satker",
+  "version": "1.0.0",
+  "description": "Backend API untuk data RUP (Rencana Umum Pengadaan) berdasarkan kd_satker menggunakan BunJS, Hono, dan DuckDB",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir ./dist",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "bun",
+    "hono",
+    "duckdb",
+    "parquet",
+    "api",
+    "rup"
+  ],
+  "author": "Rizko",
+  "license": "MIT",
+  "dependencies": {
+    "hono": "^3.12.8",
+    "@duckdb/duckdb-wasm": "^1.28.0",
+    "@types/node": "^20.10.5"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}
