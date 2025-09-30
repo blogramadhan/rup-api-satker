@@ -34,6 +34,59 @@ const DEFAULT_TAHUN = process.env.DEFAULT_TAHUN || '2025';
 let currentKlpd = DEFAULT_KLPD;
 let currentTahun = DEFAULT_TAHUN;
 
+// Daftar KLPD yang valid
+const VALID_KLPD = [
+  'D001', 'D002', 'D003', 'D004', 'D005', 'D006', 'D007', 'D008', 'D009', 'D010',
+  'D031', 'D032', 'D033', 'D034', 'D035', 'D036',
+  'D051', 'D052', 'D053',
+  'D061', 'D062', 'D063', 'D064', 'D065',
+  'D071', 'D072', 'D073', 'D074', 'D075', 'D076',
+  'D081', 'D082',
+  'D091', 'D094', 'D197'
+];
+
+// Fungsi untuk validasi dan normalisasi KLPD
+function validateAndNormalizeKlpd(klpd) {
+  if (!klpd) {
+    return { valid: false, normalized: null, error: 'KLPD tidak boleh kosong' };
+  }
+  
+  // Normalisasi: uppercase dan trim
+  const normalizedKlpd = klpd.toString().toUpperCase().trim();
+  
+  // Cek apakah KLPD valid
+  if (!VALID_KLPD.includes(normalizedKlpd)) {
+    return { 
+      valid: false, 
+      normalized: normalizedKlpd, 
+      error: `KLPD '${normalizedKlpd}' tidak valid. KLPD yang tersedia: ${VALID_KLPD.slice(0, 10).join(', ')}...` 
+    };
+  }
+  
+  return { valid: true, normalized: normalizedKlpd, error: null };
+}
+
+// Fungsi untuk validasi tahun
+function validateTahun(tahun) {
+  if (!tahun) {
+    return { valid: false, normalized: null, error: 'Tahun tidak boleh kosong' };
+  }
+  
+  const normalizedTahun = tahun.toString().trim();
+  const tahunNum = parseInt(normalizedTahun);
+  
+  // Validasi tahun harus 4 digit dan dalam rentang yang masuk akal
+  if (isNaN(tahunNum) || tahunNum < 2020 || tahunNum > 2030) {
+    return { 
+      valid: false, 
+      normalized: normalizedTahun, 
+      error: `Tahun '${normalizedTahun}' tidak valid. Tahun harus antara 2020-2030` 
+    };
+  }
+  
+  return { valid: true, normalized: normalizedTahun, error: null };
+}
+
 // Fungsi untuk membuat URL berdasarkan parameter
 function buildDataURL(klpd = DEFAULT_KLPD, tahun = DEFAULT_TAHUN) {
   // Jika ada custom URL di environment, gunakan itu
@@ -54,19 +107,38 @@ let JSON_DATA_URL = buildDataURL(currentKlpd, currentTahun);
 
 // Fungsi untuk fetch data JSON dari URL dengan parameter opsional
 async function fetchJSONData(klpd = currentKlpd, tahun = currentTahun) {
-  // Define cacheKey di luar try-catch agar bisa diakses di catch block
-  const cacheKey = `rupData_${klpd}_${tahun}`;
-  
   try {
-    // Update parameter saat ini
-    currentKlpd = klpd;
-    currentTahun = tahun;
+    // Validasi dan normalisasi parameter
+    const klpdValidation = validateAndNormalizeKlpd(klpd);
+    const tahunValidation = validateTahun(tahun);
     
-    // Build URL berdasarkan parameter
-    JSON_DATA_URL = buildDataURL(klpd, tahun);
+    if (!klpdValidation.valid) {
+      throw new Error(`Validasi KLPD gagal: ${klpdValidation.error}`);
+    }
+    
+    if (!tahunValidation.valid) {
+      throw new Error(`Validasi Tahun gagal: ${tahunValidation.error}`);
+    }
+    
+    // Gunakan parameter yang sudah dinormalisasi
+    const normalizedKlpd = klpdValidation.normalized;
+    const normalizedTahun = tahunValidation.normalized;
+    
+    // Define cacheKey dengan parameter yang sudah dinormalisasi
+    const cacheKey = `rupData_${normalizedKlpd}_${normalizedTahun}`;
+    
+    // Update parameter saat ini dengan nilai yang sudah dinormalisasi
+    currentKlpd = normalizedKlpd;
+    currentTahun = normalizedTahun;
+    
+    // Build URL berdasarkan parameter yang sudah dinormalisasi
+    JSON_DATA_URL = buildDataURL(normalizedKlpd, normalizedTahun);
     
     console.log('🔄 Mengambil data JSON dari:', JSON_DATA_URL);
-    console.log('📊 Parameter: KLPD =', klpd, ', Tahun =', tahun);
+    console.log('📊 Parameter: KLPD =', normalizedKlpd, ', Tahun =', normalizedTahun);
+    if (klpd !== normalizedKlpd || tahun !== normalizedTahun) {
+      console.log('🔄 Parameter dinormalisasi dari:', klpd, tahun, '→', normalizedKlpd, normalizedTahun);
+    }
     console.log('🔍 Cache key:', cacheKey);
     
     // Validasi URL
@@ -208,15 +280,28 @@ async function fetchJSONData(klpd = currentKlpd, tahun = currentTahun) {
       isDataLoaded = true;
     } else {
       // Berikan error yang lebih informatif
-      const errorMessage = error.response 
-        ? `HTTP ${error.response.status}: ${error.response.statusText || 'Unknown error'}`
-        : error.code === 'ENOTFOUND' 
-          ? 'Domain tidak ditemukan. Periksa koneksi internet atau URL'
-          : error.code === 'ECONNREFUSED'
-            ? 'Koneksi ditolak. Server mungkin tidak tersedia'
-            : error.code === 'ETIMEDOUT'
-              ? 'Timeout. Server tidak merespons dalam waktu yang ditentukan'
-              : error.message || 'Unknown error';
+      let errorMessage;
+      
+      if (error.response) {
+        if (error.response.status === 404) {
+          errorMessage = `Data tidak tersedia untuk KLPD '${normalizedKlpd}' tahun '${normalizedTahun}'. ` +
+            `Kemungkinan penyebab:\n` +
+            `• Data belum dipublish untuk kombinasi KLPD/tahun ini\n` +
+            `• KLPD tidak memiliki data RUP untuk tahun tersebut\n` +
+            `• URL: ${JSON_DATA_URL}\n` +
+            `Coba gunakan KLPD/tahun yang berbeda atau hubungi administrator data.`;
+        } else {
+          errorMessage = `HTTP ${error.response.status}: ${error.response.statusText || 'Unknown error'}`;
+        }
+      } else if (error.code === 'ENOTFOUND') {
+        errorMessage = 'Domain tidak ditemukan. Periksa koneksi internet atau URL';
+      } else if (error.code === 'ECONNREFUSED') {
+        errorMessage = 'Koneksi ditolak. Server mungkin tidak tersedia';
+      } else if (error.code === 'ETIMEDOUT') {
+        errorMessage = 'Timeout. Server tidak merespons dalam waktu yang ditentukan';
+      } else {
+        errorMessage = error.message || 'Unknown error';
+      }
       
       throw new Error(`Gagal mengambil data: ${errorMessage}`);
     }
@@ -285,13 +370,92 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Endpoint untuk validasi KLPD dan tahun
+app.get('/api/validate', (req, res) => {
+  try {
+    const { klpd, tahun } = req.query;
+    
+    if (!klpd && !tahun) {
+      return res.status(400).json({
+        success: false,
+        message: 'Parameter klpd atau tahun diperlukan',
+        valid_klpd: VALID_KLPD
+      });
+    }
+    
+    const results = {};
+    
+    if (klpd) {
+      const klpdValidation = validateAndNormalizeKlpd(klpd);
+      results.klpd = {
+        input: klpd,
+        valid: klpdValidation.valid,
+        normalized: klpdValidation.normalized,
+        error: klpdValidation.error
+      };
+    }
+    
+    if (tahun) {
+      const tahunValidation = validateTahun(tahun);
+      results.tahun = {
+        input: tahun,
+        valid: tahunValidation.valid,
+        normalized: tahunValidation.normalized,
+        error: tahunValidation.error
+      };
+    }
+    
+    const allValid = Object.values(results).every(r => r.valid);
+    
+    res.json({
+      success: allValid,
+      message: allValid ? 'Semua parameter valid' : 'Ada parameter yang tidak valid',
+      results,
+      valid_klpd: VALID_KLPD.slice(0, 10).concat(['...']),
+      total_valid_klpd: VALID_KLPD.length
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error validasi: ' + error.message
+    });
+  }
+});
+
 // Test koneksi endpoint
 app.get('/api/test-connection', async (req, res) => {
   try {
     const { klpd, tahun } = req.query;
     const testKlpd = klpd || currentKlpd;
     const testTahun = tahun || currentTahun;
-    const testURL = buildDataURL(testKlpd, testTahun);
+    
+    // Validasi parameter sebelum test koneksi
+    const klpdValidation = validateAndNormalizeKlpd(testKlpd);
+    const tahunValidation = validateTahun(testTahun);
+    
+    if (!klpdValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Parameter KLPD tidak valid',
+        error: klpdValidation.error,
+        input_klpd: testKlpd,
+        valid_klpd: VALID_KLPD.slice(0, 10).concat(['...'])
+      });
+    }
+    
+    if (!tahunValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Parameter tahun tidak valid',
+        error: tahunValidation.error,
+        input_tahun: testTahun
+      });
+    }
+    
+    const normalizedKlpd = klpdValidation.normalized;
+    const normalizedTahun = tahunValidation.normalized;
+    const testURL = buildDataURL(normalizedKlpd, normalizedTahun);
     
     console.log('🧪 Testing connection to:', testURL);
     
@@ -309,6 +473,16 @@ app.get('/api/test-connection', async (req, res) => {
       success: true,
       message: 'Koneksi berhasil',
       url: testURL,
+      klpd: {
+        input: testKlpd,
+        normalized: normalizedKlpd,
+        changed: testKlpd !== normalizedKlpd
+      },
+      tahun: {
+        input: testTahun,
+        normalized: normalizedTahun,
+        changed: testTahun !== normalizedTahun
+      },
       status: response.status,
       headers: response.headers,
       response_time_ms: duration,
@@ -681,42 +855,21 @@ app.get('/api/stats', async (req, res) => {
 app.get('/api/klpd/list', async (req, res) => {
   try {
     // Daftar KLPD yang umum digunakan (berdasarkan kode standar Indonesia)
+    // Daftar KLPD hanya untuk Provinsi Kalimantan Barat dan seluruh kabupaten/kota di Kalimantan Barat
     const klpdList = [
-      { kd_klpd: 'D001', nama_klpd: 'Provinsi Nanggroe Aceh Darussalam' },
-      { kd_klpd: 'D002', nama_klpd: 'Provinsi Sumatera Utara' },
-      { kd_klpd: 'D003', nama_klpd: 'Provinsi Sumatera Barat' },
-      { kd_klpd: 'D004', nama_klpd: 'Provinsi Riau' },
-      { kd_klpd: 'D005', nama_klpd: 'Provinsi Jambi' },
-      { kd_klpd: 'D006', nama_klpd: 'Provinsi Sumatera Selatan' },
-      { kd_klpd: 'D007', nama_klpd: 'Provinsi Bengkulu' },
-      { kd_klpd: 'D008', nama_klpd: 'Provinsi Lampung' },
-      { kd_klpd: 'D009', nama_klpd: 'Provinsi Kepulauan Bangka Belitung' },
-      { kd_klpd: 'D010', nama_klpd: 'Provinsi Kepulauan Riau' },
-      { kd_klpd: 'D031', nama_klpd: 'Provinsi DKI Jakarta' },
-      { kd_klpd: 'D032', nama_klpd: 'Provinsi Jawa Barat' },
-      { kd_klpd: 'D033', nama_klpd: 'Provinsi Jawa Tengah' },
-      { kd_klpd: 'D034', nama_klpd: 'Provinsi DI Yogyakarta' },
-      { kd_klpd: 'D035', nama_klpd: 'Provinsi Jawa Timur' },
-      { kd_klpd: 'D036', nama_klpd: 'Provinsi Banten' },
-      { kd_klpd: 'D051', nama_klpd: 'Provinsi Bali' },
-      { kd_klpd: 'D052', nama_klpd: 'Provinsi Nusa Tenggara Barat' },
-      { kd_klpd: 'D053', nama_klpd: 'Provinsi Nusa Tenggara Timur' },
-      { kd_klpd: 'D061', nama_klpd: 'Provinsi Kalimantan Barat' },
-      { kd_klpd: 'D062', nama_klpd: 'Provinsi Kalimantan Tengah' },
-      { kd_klpd: 'D063', nama_klpd: 'Provinsi Kalimantan Selatan' },
-      { kd_klpd: 'D064', nama_klpd: 'Provinsi Kalimantan Timur' },
-      { kd_klpd: 'D065', nama_klpd: 'Provinsi Kalimantan Utara' },
-      { kd_klpd: 'D071', nama_klpd: 'Provinsi Sulawesi Utara' },
-      { kd_klpd: 'D072', nama_klpd: 'Provinsi Sulawesi Tengah' },
-      { kd_klpd: 'D073', nama_klpd: 'Provinsi Sulawesi Selatan' },
-      { kd_klpd: 'D074', nama_klpd: 'Provinsi Sulawesi Tenggara' },
-      { kd_klpd: 'D075', nama_klpd: 'Provinsi Gorontalo' },
-      { kd_klpd: 'D076', nama_klpd: 'Provinsi Sulawesi Barat' },
-      { kd_klpd: 'D081', nama_klpd: 'Provinsi Maluku' },
-      { kd_klpd: 'D082', nama_klpd: 'Provinsi Maluku Utara' },
-      { kd_klpd: 'D091', nama_klpd: 'Provinsi Papua Barat' },
-      { kd_klpd: 'D094', nama_klpd: 'Provinsi Papua' },
-      { kd_klpd: 'D197', nama_klpd: 'Provinsi Kalimantan Barat' }
+      { kd_klpd: 'D197', nama_klpd: 'Provinsi Kalimantan Barat' },
+      { kd_klpd: 'D206', nama_klpd: 'Kabupaten Bengkayang' },
+      { kd_klpd: 'D205', nama_klpd: 'Kabupaten Landak' },
+      { kd_klpd: 'D552', nama_klpd: 'Kabupaten Mempawah' },
+      { kd_klpd: 'D204', nama_klpd: 'Kabupaten Sanggau' },
+      { kd_klpd: 'D201', nama_klpd: 'Kabupaten Ketapang' },
+      { kd_klpd: 'D211', nama_klpd: 'Kabupaten Sintang' },
+      { kd_klpd: 'D209', nama_klpd: 'Kabupaten Kapuas Hulu' },
+      { kd_klpd: 'D198', nama_klpd: 'Kabupaten Sekadau' },
+      { kd_klpd: 'D210', nama_klpd: 'Kabupaten Melawi' },
+      { kd_klpd: 'D202', nama_klpd: 'Kabupaten Kubu Raya' },
+      { kd_klpd: 'D199', nama_klpd: 'Kota Pontianak' },
+      { kd_klpd: 'D200', nama_klpd: 'Kota Singkawang' }
     ];
 
     res.json(klpdList);
@@ -975,6 +1128,7 @@ app.listen(port, () => {
   console.log(`🌟 Server Express.js berjalan di http://localhost:${port}`);
   console.log(`📡 API Endpoints:`);
   console.log(`   GET /health - Health check`);
+  console.log(`   GET /api/validate?klpd=&tahun= - Validasi parameter KLPD dan tahun`);
   console.log(`   GET /api/test-connection?klpd=&tahun= - Test koneksi ke data source`);
   console.log(`   GET /api/debug - Debug info & sample data`);
   console.log(`   GET /api/config - Lihat konfigurasi KLPD & tahun saat ini`);
