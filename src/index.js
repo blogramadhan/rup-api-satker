@@ -38,12 +38,15 @@ let currentTahun = DEFAULT_TAHUN;
 function buildDataURL(klpd = DEFAULT_KLPD, tahun = DEFAULT_TAHUN) {
   // Jika ada custom URL di environment, gunakan itu
   if (process.env.JSON_DATA_URL) {
+    console.log('🔧 Menggunakan custom URL dari environment');
     return process.env.JSON_DATA_URL;
   }
   
   // Build URL otomatis berdasarkan parameter menggunakan S3 SIP PBJ
   // Format: https://s3-sip.pbj.my.id/rup/{KLPD}/RUP-PaketPenyedia-Terumumkan/{TAHUN}/data.json
-  return `https://s3-sip.pbj.my.id/rup/${klpd}/RUP-PaketPenyedia-Terumumkan/${tahun}/data.json`;
+  const url = `https://s3-sip.pbj.my.id/rup/${klpd}/RUP-PaketPenyedia-Terumumkan/${tahun}/data.json`;
+  console.log('🔧 URL yang dibangun:', url);
+  return url;
 }
 
 // URL default
@@ -64,6 +67,14 @@ async function fetchJSONData(klpd = currentKlpd, tahun = currentTahun) {
     
     console.log('🔄 Mengambil data JSON dari:', JSON_DATA_URL);
     console.log('📊 Parameter: KLPD =', klpd, ', Tahun =', tahun);
+    console.log('🔍 Cache key:', cacheKey);
+    
+    // Validasi URL
+    try {
+      new URL(JSON_DATA_URL);
+    } catch (urlError) {
+      throw new Error(`URL tidak valid: ${JSON_DATA_URL}`);
+    }
     
     // Cek cache berdasarkan parameter (cache key unik per KLPD+Tahun)
     const cachedData = dataCache.get(cacheKey);
@@ -75,8 +86,10 @@ async function fetchJSONData(klpd = currentKlpd, tahun = currentTahun) {
     }
 
     isLoading = true;
+    console.log('⏳ Memulai request HTTP...');
     
     // Fetch data dari URL
+    const startTime = Date.now();
     const response = await axios.get(JSON_DATA_URL, {
       timeout: 30000, // 30 detik timeout
       headers: {
@@ -84,13 +97,33 @@ async function fetchJSONData(klpd = currentKlpd, tahun = currentTahun) {
         'User-Agent': 'RUP-API-Satker/1.0'
       }
     });
+    
+    const requestDuration = Date.now() - startTime;
+    console.log(`⚡ Request selesai dalam ${requestDuration}ms`);
 
     console.log('📊 Response status:', response.status);
     console.log('📊 Response headers:', response.headers['content-type']);
     console.log('📊 Response data type:', typeof response.data);
+    console.log('📊 Response data length:', response.data?.length || 'N/A');
+    
+    // Validasi response status
+    if (response.status !== 200) {
+      throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+    }
+    
+    // Validasi content-type
+    const contentType = response.headers['content-type'] || '';
+    if (!contentType.includes('application/json') && !contentType.includes('text/plain')) {
+      console.warn('⚠️ Content-Type bukan JSON:', contentType);
+    }
     
     // Handle different response formats
     let jsonData = response.data;
+    
+    // Validasi data tidak null/undefined
+    if (jsonData === null || jsonData === undefined) {
+      throw new Error('Response data kosong atau null');
+    }
     
     // Jika response adalah string, parse sebagai JSON
     if (typeof jsonData === 'string') {
@@ -115,7 +148,24 @@ async function fetchJSONData(klpd = currentKlpd, tahun = currentTahun) {
     
     if (!Array.isArray(jsonData)) {
       console.error('❌ Data structure:', Object.keys(jsonData || {}));
-      throw new Error('Data yang diterima bukan array JSON yang valid');
+      console.error('❌ Data sample:', JSON.stringify(jsonData).substring(0, 200) + '...');
+      throw new Error('Data yang diterima bukan array JSON yang valid. Struktur data: ' + typeof jsonData);
+    }
+    
+    // Validasi array tidak kosong
+    if (jsonData.length === 0) {
+      console.warn('⚠️ Data array kosong untuk KLPD:', klpd, 'Tahun:', tahun);
+      // Tidak throw error, karena mungkin memang tidak ada data
+    } else {
+      // Validasi struktur data item pertama
+      const firstItem = jsonData[0];
+      const requiredFields = ['kd_satker'];
+      const missingFields = requiredFields.filter(field => !(field in firstItem));
+      
+      if (missingFields.length > 0) {
+        console.warn('⚠️ Field yang hilang dari data:', missingFields);
+        console.warn('⚠️ Available fields:', Object.keys(firstItem));
+      }
     }
 
     rupData = jsonData;
@@ -139,6 +189,15 @@ async function fetchJSONData(klpd = currentKlpd, tahun = currentTahun) {
     
   } catch (error) {
     console.error('❌ Error saat mengambil data JSON:', error.message);
+    console.error('❌ Error details:', {
+      url: JSON_DATA_URL,
+      klpd: klpd,
+      tahun: tahun,
+      errorCode: error.code,
+      errorResponse: error.response?.status,
+      errorData: error.response?.data,
+      stack: error.stack
+    });
     isLoading = false;
     
     // Jika ada data lama di cache, gunakan itu
@@ -148,7 +207,18 @@ async function fetchJSONData(klpd = currentKlpd, tahun = currentTahun) {
       rupData = cachedData;
       isDataLoaded = true;
     } else {
-      throw error;
+      // Berikan error yang lebih informatif
+      const errorMessage = error.response 
+        ? `HTTP ${error.response.status}: ${error.response.statusText || 'Unknown error'}`
+        : error.code === 'ENOTFOUND' 
+          ? 'Domain tidak ditemukan. Periksa koneksi internet atau URL'
+          : error.code === 'ECONNREFUSED'
+            ? 'Koneksi ditolak. Server mungkin tidak tersedia'
+            : error.code === 'ETIMEDOUT'
+              ? 'Timeout. Server tidak merespons dalam waktu yang ditentukan'
+              : error.message || 'Unknown error';
+      
+      throw new Error(`Gagal mengambil data: ${errorMessage}`);
     }
   }
 }
@@ -208,8 +278,56 @@ app.get('/health', (req, res) => {
     data_loaded: isDataLoaded,
     data_loading: isLoading,
     total_records: rupData.length,
+    current_url: JSON_DATA_URL,
+    current_klpd: currentKlpd,
+    current_tahun: currentTahun,
     cache_stats: dataCache.getStats()
   });
+});
+
+// Test koneksi endpoint
+app.get('/api/test-connection', async (req, res) => {
+  try {
+    const { klpd, tahun } = req.query;
+    const testKlpd = klpd || currentKlpd;
+    const testTahun = tahun || currentTahun;
+    const testURL = buildDataURL(testKlpd, testTahun);
+    
+    console.log('🧪 Testing connection to:', testURL);
+    
+    const startTime = Date.now();
+    const response = await axios.head(testURL, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'RUP-API-Satker/1.0'
+      }
+    });
+    
+    const duration = Date.now() - startTime;
+    
+    res.json({
+      success: true,
+      message: 'Koneksi berhasil',
+      url: testURL,
+      status: response.status,
+      headers: response.headers,
+      response_time_ms: duration,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Test connection failed:', error.message);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Koneksi gagal',
+      url: buildDataURL(req.query.klpd || currentKlpd, req.query.tahun || currentTahun),
+      error: error.message,
+      error_code: error.code,
+      error_status: error.response?.status,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Endpoint utama untuk mendapatkan data berdasarkan kd_satker dengan parameter klpd dan tahun
@@ -825,13 +943,31 @@ app.use('*', (req, res) => {
   });
 });
 
+// Fungsi untuk inisialisasi data dengan retry
+async function initializeData(retries = 3, delay = 5000) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`🔄 Mencoba inisialisasi data (percobaan ${attempt}/${retries})`);
+      await fetchJSONData();
+      console.log('🚀 Data JSON berhasil diinisialisasi');
+      return true;
+    } catch (error) {
+      console.error(`❌ Gagal inisialisasi percobaan ${attempt}:`, error.message);
+      
+      if (attempt < retries) {
+        console.log(`⏳ Menunggu ${delay/1000} detik sebelum percobaan berikutnya...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error('❌ Semua percobaan inisialisasi gagal');
+        console.log('⚠️ Server tetap berjalan, data akan dicoba dimuat ulang saat ada request');
+        return false;
+      }
+    }
+  }
+}
+
 // Inisialisasi data saat aplikasi dimulai
-fetchJSONData().then(() => {
-  console.log('🚀 Data JSON berhasil diinisialisasi');
-}).catch((error) => {
-  console.error('❌ Gagal menginisialisasi data JSON:', error.message);
-  console.log('⚠️ Server tetap berjalan, data akan dicoba dimuat ulang saat ada request');
-});
+initializeData();
 
 const port = process.env.PORT || 3000;
 
@@ -839,6 +975,7 @@ app.listen(port, () => {
   console.log(`🌟 Server Express.js berjalan di http://localhost:${port}`);
   console.log(`📡 API Endpoints:`);
   console.log(`   GET /health - Health check`);
+  console.log(`   GET /api/test-connection?klpd=&tahun= - Test koneksi ke data source`);
   console.log(`   GET /api/debug - Debug info & sample data`);
   console.log(`   GET /api/config - Lihat konfigurasi KLPD & tahun saat ini`);
   console.log(`   POST /api/config - Ganti KLPD & tahun`);
@@ -854,6 +991,7 @@ app.listen(port, () => {
   console.log(`   POST /api/refresh - Refresh data manual`);
   console.log(`📊 Data URL: ${JSON_DATA_URL}`);
   console.log(`🏢 KLPD: ${currentKlpd}, 📅 Tahun: ${currentTahun}`);
+  console.log(`🔧 Untuk debugging: curl http://localhost:${port}/api/test-connection`);
 });
 
 export default app;
