@@ -1,6 +1,6 @@
 # RUP API Satker
 
-Backend API untuk mengakses data RUP (Rencana Umum Pengadaan) berdasarkan kode satuan kerja (`kd_satker`) menggunakan BunJS, Hono, dan DuckDB.
+Backend API untuk mengakses data RUP (Rencana Umum Pengadaan) berdasarkan kode satuan kerja (`kd_satker`) menggunakan Node.js, Express.js, dan DuckDB.
 
 ## 🚀 Fitur
 
@@ -15,25 +15,25 @@ Backend API untuk mengakses data RUP (Rencana Umum Pengadaan) berdasarkan kode s
 
 ## 📋 Prasyarat
 
-- [Bun](https://bun.sh/) v1.0.0 atau lebih baru
-- Node.js v18+ (untuk kompatibilitas package)
+- Node.js v18+ 
+- npm atau yarn
 
 ## 🛠️ Instalasi
 
 1. Clone atau download project ini
 2. Install dependencies:
    ```bash
-   bun install
+   npm install
    ```
 
 3. Jalankan dalam mode development:
    ```bash
-   bun run dev
+   npm run dev
    ```
 
 4. Atau jalankan dalam mode production:
    ```bash
-   bun run start
+   npm start
    ```
 
 Server akan berjalan di `http://localhost:3000`
@@ -229,8 +229,8 @@ Semua endpoint menggunakan format response yang konsisten:
 
 - **DuckDB**: Database in-memory yang sangat cepat untuk analitik
 - **Parquet**: Format file yang efisien untuk data besar
-- **BunJS**: Runtime JavaScript yang sangat cepat
-- **Hono**: Web framework yang ringan dan cepat
+- **Node.js**: Runtime JavaScript yang stabil dan mature
+- **Express.js**: Web framework yang populer dan reliable
 
 ## 🚨 Error Handling
 
@@ -266,4 +266,4 @@ Project ini menggunakan license MIT. Lihat file `LICENSE` untuk detail lengkap.
 
 ---
 
-**Dibuat dengan ❤️ menggunakan BunJS, Hono, dan DuckDB**
+**Dibuat dengan ❤️ menggunakan Node.js, Express.js, dan DuckDB**
