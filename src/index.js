@@ -846,6 +846,19 @@ app.get('/api/stats', async (req, res) => {
       stats.breakdown_jenis = {};
     }
 
+    // Breakdown berdasarkan metode pengadaan
+    try {
+      const metodeBreakdown = rupData.reduce((acc, item) => {
+        const metode = item.metode_pengadaan || 'Tidak Diketahui';
+        acc[metode] = (acc[metode] || 0) + 1;
+        return acc;
+      }, {});
+      stats.breakdown_metode = metodeBreakdown;
+    } catch (err) {
+      console.warn('Warning: Error getting metode breakdown:', err);
+      stats.breakdown_metode = {};
+    }
+
     res.json(stats);
 
   } catch (error) {

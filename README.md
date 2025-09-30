@@ -318,6 +318,13 @@ Mendapatkan statistik komprehensif data RUP saat ini.
     "Jasa Konsultansi": 3000,
     "Pekerjaan Konstruksi": 2000,
     "Jasa Lainnya": 2345
+  },
+  "breakdown_metode": {
+    "Tender Terbuka": 4500,
+    "Tender Terbatas": 2800,
+    "Penunjukan Langsung": 1200,
+    "Pengadaan Langsung": 3500,
+    "Tender Cepat": 845
   }
 }
 ```
