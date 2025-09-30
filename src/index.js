@@ -818,7 +818,7 @@ app.get('/api/stats', async (req, res) => {
     const stats = {
       total_records: rupData.length,
       total_satker: new Set(rupData.map(item => item.kd_satker)).size,
-      total_provinsi: new Set(rupData.map(item => item.provinsi)).size
+      total_provinsi: new Set(rupData.map(item => item.nama_klpd)).size
     };
 
     // Hitung total pagu jika ada
