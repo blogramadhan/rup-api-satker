@@ -34,15 +34,21 @@ const DEFAULT_TAHUN = process.env.DEFAULT_TAHUN || '2025';
 let currentKlpd = DEFAULT_KLPD;
 let currentTahun = DEFAULT_TAHUN;
 
-// Daftar KLPD yang valid
+// Daftar KLPD yang valid - Khusus Provinsi Kalimantan Barat dan Kabupaten/Kota di Kalimantan Barat
 const VALID_KLPD = [
-  'D001', 'D002', 'D003', 'D004', 'D005', 'D006', 'D007', 'D008', 'D009', 'D010',
-  'D031', 'D032', 'D033', 'D034', 'D035', 'D036',
-  'D051', 'D052', 'D053',
-  'D061', 'D062', 'D063', 'D064', 'D065',
-  'D071', 'D072', 'D073', 'D074', 'D075', 'D076',
-  'D081', 'D082',
-  'D091', 'D094', 'D197'
+  'D197', // Provinsi Kalimantan Barat
+  'D198', // Kabupaten Sekadau
+  'D199', // Kota Pontianak
+  'D200', // Kota Singkawang
+  'D201', // Kabupaten Ketapang
+  'D202', // Kabupaten Kubu Raya
+  'D204', // Kabupaten Sanggau
+  'D205', // Kabupaten Landak
+  'D206', // Kabupaten Bengkayang
+  'D209', // Kabupaten Kapuas Hulu
+  'D210', // Kabupaten Melawi
+  'D211', // Kabupaten Sintang
+  'D552'  // Kabupaten Mempawah
 ];
 
 // Fungsi untuk validasi dan normalisasi KLPD
