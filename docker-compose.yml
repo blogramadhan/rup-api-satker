@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  rup-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rup-api-satker
+    restart: unless-stopped
+    ports:
+      - "8080:8080"  # Port eksternal:internal (menggunakan 8080 sebagai pengganti 3000)
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - DEFAULT_KLPD=D197
+      - DEFAULT_TAHUN=2025
+      # Uncomment dan sesuaikan jika ingin menggunakan custom URL
+      # - JSON_DATA_URL=https://custom-url.com/data.json
+    volumes:
+      # Mount untuk logs (opsional)
+      - ./logs:/app/logs
+    networks:
+      - rup-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Resource limits untuk mencegah overconsumption
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+networks:
+  rup-network:
+    driver: bridge
+
+# Volume untuk logs (opsional)
+volumes:
+  logs:
+    driver: local
